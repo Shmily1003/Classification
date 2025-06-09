@@ -8,11 +8,6 @@ from model import MultiTaskEfficientNet, MultiTaskDataset, MultiTaskLoss, get_tr
 
 from logger import setup_my_logger
 import logging
-my_logger = setup_my_logger(
-    stream=dict(enable=True, level=logging.DEBUG),
-    file=dict(enable=False, level=logging.DEBUG),
-    cfg=dict(log_root='my_logs')
-)
 
 def calculate_accuracy(outputs, targets, mask=None):
     """计算准确率"""
@@ -183,7 +178,7 @@ def main():
     parser = argparse.ArgumentParser(description='Train MultiTask EfficientNet')
     parser.add_argument('--data_dir', type=str, default='dataset', help='Dataset directory')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--num_epochs', type=int, default=50, help='Number of epochs')
+    parser.add_argument('--num_epochs', type=int, default=20, help='Number of epochs')
     parser.add_argument('--learning_rate', type=float, default=0.001, help='Learning rate')
     parser.add_argument('--save_dir', type=str, default='checkpoints', help='Directory to save models')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of workers for dataloader')
@@ -193,20 +188,26 @@ def main():
     
     args = parser.parse_args()
     
+    my_logger = setup_my_logger(
+        stream=dict(enable=False, level=logging.DEBUG),
+        file=dict(enable=True, level=logging.INFO),
+        cfg=dict(log_root='my_logs')
+    )
+
     # 创建保存目录
     os.makedirs(args.save_dir, exist_ok=True)
     
     # 设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f'Using device: {device}')
+    my_logger.info(f'Using device: {device}')
     
     # 创建数据集
-    print("Loading dataset...")
+    my_logger.info("Loading dataset...")
     train_dataset = MultiTaskDataset(args.data_dir, transform=get_transform('train'))
     
     # 检查数据集是否为空
     if len(train_dataset) == 0:
-        print("Error: Dataset is empty. Please check your dataset directory structure.")
+        my_logger.error("Dataset is empty. Please check your dataset directory structure.")
         return
     
     # 创建数据加载器
@@ -219,14 +220,15 @@ def main():
     )
     
     # 获取图案类别数量
-    num_pattern_classes = len(train_dataset.pattern_classes)
-    print(f"Number of pattern classes: {num_pattern_classes}")
+    num_pattern_classes, num_number_classes = len(train_dataset.pattern_classes), len(train_dataset.number_classes)
+    my_logger.info(f"Number of number classes: {num_number_classes}")
+    my_logger.info(f"Number of pattern classes: {num_pattern_classes}")
     
     # 创建模型
-    print("Creating model...")
+    my_logger.info("Creating model...")
     model = MultiTaskEfficientNet(
-        num_number_classes=100, 
-        num_pattern_classes=max(15, num_pattern_classes)
+        num_number_classes=num_number_classes, 
+        num_pattern_classes=num_pattern_classes
     )
     model.to(device)
     
@@ -236,12 +238,12 @@ def main():
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
     
     # 训练循环
-    print("Starting training...")
+    my_logger.info("Starting training...")
     best_acc = 0.0
     
     for epoch in range(args.num_epochs):
-        print(f"\nEpoch {epoch+1}/{args.num_epochs}")
-        print("-" * 50)
+        my_logger.info(f"Epoch {epoch+1}/{args.num_epochs}")
+        my_logger.info("-" * 50)
         
         # 训练
         train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device, epoch)
@@ -250,11 +252,11 @@ def main():
         scheduler.step()
         
         # 打印训练结果
-        print(f"Train Loss: {train_metrics['total_loss']:.4f}")
-        print(f"Train O1 Acc: {train_metrics['acc_o1']:.4f}")
-        print(f"Train O2 Acc: {train_metrics['acc_o2']:.4f}")
-        print(f"Train O3 Acc: {train_metrics['acc_o3']:.4f}")
-        print(f"Current LR: {optimizer.param_groups[0]['lr']:.6f}")
+        my_logger.info(f"Train Loss: {train_metrics['total_loss']:.4f}")
+        my_logger.info(f"Train O1 Acc: {train_metrics['acc_o1']:.4f}")
+        my_logger.info(f"Train O2 Acc: {train_metrics['acc_o2']:.4f}")
+        my_logger.info(f"Train O3 Acc: {train_metrics['acc_o3']:.4f}")
+        my_logger.info(f"Current LR: {optimizer.param_groups[0]['lr']:.6f}")
         
         # 保存最佳模型
         current_acc = (train_metrics['acc_o1'] + train_metrics['acc_o2'] + train_metrics['acc_o3']) / 3
@@ -267,6 +269,7 @@ def main():
                 'scheduler_state_dict': scheduler.state_dict(),
                 'best_acc': best_acc,
                 'train_metrics': train_metrics,
+                'number_classes': train_dataset.number_classes,
                 'pattern_classes': train_dataset.pattern_classes
             }, os.path.join(args.save_dir, 'best_model.pth'))
             print(f"New best model saved with accuracy: {best_acc:.4f}")
@@ -280,11 +283,12 @@ def main():
                 'scheduler_state_dict': scheduler.state_dict(),
                 'best_acc': best_acc,
                 'train_metrics': train_metrics,
+                'number_classes': train_dataset.number_classes,
                 'pattern_classes': train_dataset.pattern_classes
             }, os.path.join(args.save_dir, f'checkpoint_epoch_{epoch+1}.pth'))
     
-    print("Training completed!")
-    print(f"Best accuracy: {best_acc:.4f}")
+    my_logger.info("Training completed!")
+    my_logger.info(f"Best accuracy: {best_acc:.4f}")
 
 if __name__ == "__main__":
     main()

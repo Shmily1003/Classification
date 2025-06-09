@@ -1,2 +1,4 @@
 /checkpoints
 /dataset
+/my_logs
+/__pycache__

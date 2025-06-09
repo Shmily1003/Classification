@@ -42,7 +42,7 @@ def setup_my_logger(stream: dict, file: dict, cfg: dict) -> logging.Logger:
                 os.makedirs(cfg['log_root'], exist_ok=True)
                 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
                 log_path = os.path.join(cfg['log_root'], f'{timestamp}.log')
-                fh = logging.FileHandler(log_path, mode='w')
+                fh = logging.FileHandler(log_path, mode='w', encoding='utf-8')
                 fh.setLevel(file['level'])
                 fh.setFormatter(formatter)
                 logger.addHandler(fh)

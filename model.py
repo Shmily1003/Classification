@@ -16,21 +16,23 @@ class MultiTaskDataset(Dataset):
         self.transform = transform
         self.mode = mode
         self.samples = []
+        self.number_classes = []
         self.pattern_classes = []
-        
+
         # 处理数字类别 (0-99)
         number_dir = self.root_dir / 'number'
         if number_dir.exists():
-            for i in range(100):
-                class_dir = number_dir / str(i)
-                if class_dir.exists():
-                    for img_file in class_dir.glob('*.jpg'):
-                        self.samples.append({
-                            'path': img_file,
-                            'o1': 0,  # 0表示数字
-                            'o2': i,  # 数字子类别
-                            'o3': 0   # 图案子类别（不使用时为0）
-                        })
+            self.number_classes = sorted([d.name for d in number_dir.iterdir() if d.is_dir()])
+            for idx, number_class in enumerate(self.number_classes):
+                class_dir = number_dir / number_class
+                for img_file in class_dir.glob('*.jpg'):
+                    self.samples.append({
+                        'path': img_file,
+                        'o1': 0,  # 0表示数字
+                        'o2': idx,  # 数字子类别
+                        'o3': 0,   # 图案子类别（不使用时为0）
+                        'name': number_class
+                    })
         
         # 处理图案类别
         pattern_dir = self.root_dir / 'pattern'
@@ -44,11 +46,9 @@ class MultiTaskDataset(Dataset):
                         'o1': 1,  # 1表示图案
                         'o2': 0,  # 数字子类别（不使用时为0）
                         'o3': idx, # 图案子类别
-                        'pattern_name': pattern_class
+                        'name': pattern_class
                     })
-        
-        print(f"Loaded {len(self.samples)} samples")
-        print(f"Pattern classes: {self.pattern_classes}")
+        my_logger.info(f"Loaded {len(self.samples)} samples")
     
     def __len__(self):
         return len(self.samples)
@@ -66,7 +66,7 @@ class MultiTaskDataset(Dataset):
             'o2': sample['o2'],
             'o3': sample['o3'],
             'path': str(sample['path']),
-            'pattern_name': sample.get('pattern_name', '')
+            'class': sample.get('name')
         }
 
 class MultiTaskEfficientNet(nn.Module):
@@ -78,7 +78,7 @@ class MultiTaskEfficientNet(nn.Module):
         
         # 获取特征维度
         self.feature_dim = self.backbone.num_features
-        print(f"Backbone feature dimension: {self.feature_dim}")
+        my_logger.info(f"Backbone feature dimension: {self.feature_dim}")
         
         # 三个分类头
         self.o1_head = nn.Linear(self.feature_dim, 2)  # 数字 vs 图案
@@ -148,9 +148,6 @@ class MultiTaskEfficientNet(nn.Module):
                 'o2': final_o2,
                 'o3': final_o3,
                 'final_output': final_output,
-                'o1_prob': o1_prob,
-                'o2_prob': o2_prob,
-                'o3_prob': o3_prob,
                 'o1_confidence': torch.max(o1_prob, dim=1)[0],
                 'o2_confidence': torch.max(o2_prob, dim=1)[0],
                 'o3_confidence': torch.max(o3_prob, dim=1)[0]

@@ -153,7 +153,6 @@ def main():
 
 
 if __name__ == "__main__":
-    import sys
     my_logger = setup_my_logger(
         stream=dict(enable=False, level=logging.DEBUG),
         file=dict(enable=True, level=logging.INFO),

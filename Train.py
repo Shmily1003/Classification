@@ -221,8 +221,6 @@ def main():
     
     # 获取图案类别数量
     num_pattern_classes, num_number_classes = len(train_dataset.pattern_classes), len(train_dataset.number_classes)
-    my_logger.info(f"Number of number classes: {num_number_classes}")
-    my_logger.info(f"Number of pattern classes: {num_pattern_classes}")
     
     # 创建模型
     my_logger.info("Creating model...")
@@ -231,7 +229,9 @@ def main():
         num_pattern_classes=num_pattern_classes
     )
     model.to(device)
-    
+    paras = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    my_logger.info(f'模型的参数量为：{paras}')
+
     # 损失函数和优化器
     criterion = MultiTaskLoss(alpha=args.alpha, beta=args.beta, gamma=args.gamma)
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)

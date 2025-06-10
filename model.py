@@ -69,12 +69,12 @@ class MultiTaskDataset(Dataset):
             'class': sample.get('name')
         }
 
-class MultiTaskEfficientNet(nn.Module):
-    def __init__(self, num_number_classes=100, num_pattern_classes=15):
-        super(MultiTaskEfficientNet, self).__init__()
+class MultiTaskNet(nn.Module):
+    def __init__(self, num_number_classes=100, num_pattern_classes=15, backbone='efficientnetv2_rw_s'):
+        super(MultiTaskNet, self).__init__()
         
         # 使用EfficientNetV2-B1作为backbone
-        self.backbone = timm.create_model('efficientnetv2_rw_s', pretrained=True, num_classes=0)
+        self.backbone = timm.create_model(backbone, pretrained=True, num_classes=0)
         
         # 获取特征维度
         self.feature_dim = self.backbone.num_features
@@ -88,7 +88,7 @@ class MultiTaskEfficientNet(nn.Module):
         # Dropout层用于正则化
         self.dropout = nn.Dropout(0.2)
         
-    def forward(self, x, return_features=False):
+    def forward(self, x):
         # 提取特征
         features = self.backbone(x)
         features = self.dropout(features)
@@ -106,9 +106,6 @@ class MultiTaskEfficientNet(nn.Module):
         # 第三个分类头：图案子类别
         o3_logits = self.o3_head(features)
         my_logger.debug(f"o3_logits shape: {o3_logits.shape}")
-
-        if return_features:
-            return o1_logits, o2_logits, o3_logits, features
         
         return o1_logits, o2_logits, o3_logits
     
@@ -119,16 +116,15 @@ class MultiTaskEfficientNet(nn.Module):
             
             # 获取o1的预测结果
             o1_pred = torch.argmax(o1_logits, dim=1)
-            o1_prob = F.softmax(o1_logits, dim=1)
+            # o1_prob = F.softmax(o1_logits, dim=1)
 
             # 获取o2和o3的预测结果和概率
             o2_pred = torch.argmax(o2_logits, dim=1)
-            o2_prob = F.softmax(o2_logits, dim=1)
+            # o2_prob = F.softmax(o2_logits, dim=1)
             o3_pred = torch.argmax(o3_logits, dim=1)
-            o3_prob = F.softmax(o3_logits, dim=1)
+            # o3_prob = F.softmax(o3_logits, dim=1)
             
             # 实现条件激活：根据o1的结果决定使用哪个分类头
-            batch_size = x.size(0)
             final_o2 = torch.zeros_like(o2_pred)
             final_o3 = torch.zeros_like(o3_pred)
             
@@ -144,13 +140,11 @@ class MultiTaskEfficientNet(nn.Module):
             final_output = o1_pred * 100 + final_o2 + final_o3
             
             return {
-                'o1': o1_pred,
-                'o2': final_o2,
-                'o3': final_o3,
                 'final_output': final_output,
-                'o1_confidence': torch.max(o1_prob, dim=1)[0],
-                'o2_confidence': torch.max(o2_prob, dim=1)[0],
-                'o3_confidence': torch.max(o3_prob, dim=1)[0]
+                # 置信度，可加
+                # 'o1_confidence': torch.max(o1_prob, dim=1)[0],
+                # 'o2_confidence': torch.max(o2_prob, dim=1)[0],
+                # 'o3_confidence': torch.max(o3_prob, dim=1)[0]
             }
 
 class MultiTaskLoss(nn.Module):

@@ -1,0 +1,17 @@
+MODEL:
+  backbone: efficientnetv2_rw_s
+TRAIN:
+  data_dir: dataset
+  batch_size: 32
+  num_epochs: 20
+  learning_rate: 0.001
+  save_dir: checkpoints
+  num_workers: 4
+  alpha: 1.0  # Loss weight for o1
+  beta: 1.1  # Loss weight for o2
+  gamma: 1.0  # Loss weight for o3
+TEST:
+  model_path: checkpoints/best_model.pth
+  data_dir: dataset
+  image_path: null         # 可以为 null 表示不指定
+  num_random: 10

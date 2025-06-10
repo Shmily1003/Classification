@@ -4,10 +4,16 @@ from torch.utils.data import DataLoader
 import os
 from tqdm import tqdm
 import argparse
-from model import MultiTaskEfficientNet, MultiTaskDataset, MultiTaskLoss, get_transform
+from model import MultiTaskNet, MultiTaskDataset, MultiTaskLoss, get_transform
 
 from logger import setup_my_logger
 import logging
+import yaml
+
+def load_train_config(yaml_path):
+    with open(yaml_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    return config
 
 def calculate_accuracy(outputs, targets, mask=None):
     """计算准确率"""
@@ -175,19 +181,12 @@ def validate(model, dataloader, criterion, device):
     }
 
 def main():
-    parser = argparse.ArgumentParser(description='Train MultiTask EfficientNet')
-    parser.add_argument('--data_dir', type=str, default='dataset', help='Dataset directory')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--num_epochs', type=int, default=20, help='Number of epochs')
-    parser.add_argument('--learning_rate', type=float, default=0.001, help='Learning rate')
-    parser.add_argument('--save_dir', type=str, default='checkpoints', help='Directory to save models')
-    parser.add_argument('--num_workers', type=int, default=4, help='Number of workers for dataloader')
-    parser.add_argument('--alpha', type=float, default=1.0, help='Loss weight for o1')
-    parser.add_argument('--beta', type=float, default=1.0, help='Loss weight for o2')
-    parser.add_argument('--gamma', type=float, default=1.0, help='Loss weight for o3')
-    
+    parser = argparse.ArgumentParser(description='Train MultiTask Net')
+    parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
     args = parser.parse_args()
     
+    config = load_train_config(args.config)
+
     my_logger = setup_my_logger(
         stream=dict(enable=False, level=logging.DEBUG),
         file=dict(enable=True, level=logging.INFO),
@@ -195,7 +194,7 @@ def main():
     )
 
     # 创建保存目录
-    os.makedirs(args.save_dir, exist_ok=True)
+    os.makedirs(config['TRAIN']['save_dir'], exist_ok=True)
     
     # 设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -203,7 +202,7 @@ def main():
     
     # 创建数据集
     my_logger.info("Loading dataset...")
-    train_dataset = MultiTaskDataset(args.data_dir, transform=get_transform('train'))
+    train_dataset = MultiTaskDataset(config['TRAIN']['data_dir'], transform=get_transform('train'))
     
     # 检查数据集是否为空
     if len(train_dataset) == 0:
@@ -213,9 +212,9 @@ def main():
     # 创建数据加载器
     train_loader = DataLoader(
         train_dataset, 
-        batch_size=args.batch_size, 
+        batch_size=config['TRAIN']['batch_size'], 
         shuffle=True, 
-        num_workers=args.num_workers,
+        num_workers=config['TRAIN']['num_workers'],
         pin_memory=True if torch.cuda.is_available() else False
     )
     
@@ -224,25 +223,26 @@ def main():
     
     # 创建模型
     my_logger.info("Creating model...")
-    model = MultiTaskEfficientNet(
+    model = MultiTaskNet(
         num_number_classes=num_number_classes, 
-        num_pattern_classes=num_pattern_classes
+        num_pattern_classes=num_pattern_classes,
+        backbone=config['MODEL']['backbone'],
     )
     model.to(device)
     paras = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    my_logger.info(f'模型的参数量为：{paras}')
+    my_logger.info(f'模型的参数量为: {paras}')
 
     # 损失函数和优化器
-    criterion = MultiTaskLoss(alpha=args.alpha, beta=args.beta, gamma=args.gamma)
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
+    criterion = MultiTaskLoss(alpha=config['TRAIN']['alpha'], beta=config['TRAIN']['beta'], gamma=config['TRAIN']['gamma'])
+    optimizer = optim.Adam(model.parameters(), lr=config['TRAIN']['learning_rate'], weight_decay=1e-4)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
     
     # 训练循环
     my_logger.info("Starting training...")
     best_acc = 0.0
     
-    for epoch in range(args.num_epochs):
-        my_logger.info(f"Epoch {epoch+1}/{args.num_epochs}")
+    for epoch in range(config['TRAIN']['num_epochs']):
+        my_logger.info(f"\nEpoch {epoch+1}/{config['TRAIN']['num_epochs']}")
         my_logger.info("-" * 50)
         
         # 训练
@@ -271,8 +271,9 @@ def main():
                 'train_metrics': train_metrics,
                 'number_classes': train_dataset.number_classes,
                 'pattern_classes': train_dataset.pattern_classes
-            }, os.path.join(args.save_dir, 'best_model.pth'))
-            print(f"New best model saved with accuracy: {best_acc:.4f}")
+            }, os.path.join(config['TRAIN']['save_dir'], 'best_model.pth'))
+
+            my_logger.info(f"New best model saved with accuracy: {best_acc:.4f}")
         
         # 定期保存检查点
         if (epoch + 1) % 10 == 0:
@@ -285,7 +286,7 @@ def main():
                 'train_metrics': train_metrics,
                 'number_classes': train_dataset.number_classes,
                 'pattern_classes': train_dataset.pattern_classes
-            }, os.path.join(args.save_dir, f'checkpoint_epoch_{epoch+1}.pth'))
+            }, os.path.join(config['TRAIN']['save_dir'], f'checkpoint_epoch_{epoch+1}.pth'))
     
     my_logger.info("Training completed!")
     my_logger.info(f"Best accuracy: {best_acc:.4f}")

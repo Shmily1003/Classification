@@ -1,3 +1,15 @@
+- [多任务EfficientNetV2分类器](#多任务efficientnetv2分类器)
+  - [项目结构](#项目结构)
+  - [模型架构](#模型架构)
+    - [设计思路](#设计思路)
+    - [条件激活机制](#条件激活机制)
+  - [安装依赖](#安装依赖)
+  - [使用方法](#使用方法)
+    - [1. 训练模型](#1-训练模型)
+    - [2. 测试模型](#2-测试模型)
+    - [3.训练技巧](#3训练技巧)
+  - [后续](#后续)
+
 # 多任务EfficientNetV2分类器
 
 基于EfficientNetV2-B1的多任务分类模型，用于同时分类数字(0-99)和图案类别。
@@ -8,12 +20,12 @@
 project/
 ├── dataset/                # 数据集目录
 │   ├── number/             # 数字类别
-│   │   ├── 0/              # 数字0的图片
+│   │   ├── A0/              # 数字0的图片
 │   │   │   ├── 1.jpg
 │   │   │   └── ...
-│   │   ├── 1/              # 数字1的图片
+│   │   ├── A1/              # 数字1的图片
 │   │   └── ...
-│   │   └── 99/             # 数字99的图片
+│   │   └── J99/             # 数字99的图片
 │   └── pattern/            # 图案类别
 │       ├── H_multimeter/   # 图案类别1
 │       │   ├── 1.jpg
@@ -21,6 +33,7 @@ project/
 │       ├── I_printer/      # 图案类别2
 │       ├── J_keyboard/     # 图案类别3
 │       └── ...
+├── config.yaml             # 配置文件
 ├── checkpoints/            # 模型保存目录（训练后生成）
 ├── logger.py               # 日志配置
 ├── model.py                # 模型定义
@@ -28,7 +41,7 @@ project/
 ├── test.py                 # 测试脚本
 └── README.md               # 说明文档
 ```
-
+A0、A1、H_multimeter等文件夹名字任意，图片名称任意，其他需保证完全一致（文件夹名字最好也相同）
 ## 模型架构
 
 ### 设计思路
@@ -42,7 +55,14 @@ project/
 - 当 `o1=0` (数字) 时，激活 `o2`，`o3` 输出为0
 - 当 `o1=1` (图案) 时，激活 `o3`，`o2` 输出为0
 - 最终输出: `final_output = o1*100 + o2 + o3`
-
+- 输出说明：
+```
+if final_output < 100:
+        my_logger.info(f"  预测的数字: {number_classes[final_output]}")
+    else:
+        my_logger.info(f"  预测的图案: {pattern_classes[final_output-100]}")
+``` 
+可自行添加置信度等更多输出
 ## 安装依赖
 
 ```bash
@@ -55,99 +75,24 @@ pip install torch torchvision timm pillow matplotlib tqdm
 
 基本训练：
 ```bash
-python train.py
+python train.py  --config config.yaml
 ```
-
-自定义参数训练：
-```bash
-python train.py --data_dir dataset --batch_size 32 --num_epochs 50 --learning_rate 0.001
-```
-
-训练参数说明：
-- `--data_dir`: 数据集目录路径
-- `--batch_size`: 批次大小
-- `--num_epochs`: 训练轮数
-- `--learning_rate`: 学习率
-- `--save_dir`: 模型保存目录
-- `--alpha`, `--beta`, `--gamma`: 三个分类头的损失权重
 
 ### 2. 测试模型
 
 快速测试（随机选择数据集中的一张图片）：
 ```bash
-python test.py
+python test.py  --config config.yaml
 ```
 
-测试指定图片：
-```bash
-python test.py --image_path path/to/your/image.jpg
-```
+### 3.训练技巧
+- 因为图片的数据集有点少，所以准确率明显高于数字，此时可以稍微增加数字loss的权重，反之同理
 
-测试多个随机样本：
-```bash
-python test.py --num_random 10
-```
-
-可视化结果：
-```bash
-python test.py --visualize --save_viz result.png
-```
-
-测试参数说明：
-- `--model_path`: 训练好的模型路径
-- `--data_dir`: 数据集目录
-- `--image_path`: 指定测试图片路径
-- `--num_random`: 随机测试样本数量
-- `--visualize`: 是否显示可视化结果
-- `--save_viz`: 保存可视化结果的路径
-
-## 输出格式
-
-### 训练输出
-```
-Epoch 1/50
---------------------------------------------------
-Train Loss: 1.2345
-Train O1 Acc: 0.8500
-Train O2 Acc: 0.7800
-Train O3 Acc: 0.8200
-Current LR: 0.001000
-New best model saved with accuracy: 0.8167
-```
-
-### 测试输出
-```
-============================================================
-测试图片: dataset/number/5/1.jpg
-============================================================
-预测结果:
-  O1 (数字/图案): 数字 (置信度: 0.9876)
-  O2 (数字类别): 5 (置信度: 0.9234)
-  O3 (图案类别): 0 (未激活)
-  预测的数字: 5
-
-最终输出 (o1*100 + o2 + o3): 5
-```
-
-## 模型特点
-
-1. **多任务学习**: 同时学习类别判断和子类别分类
-2. **条件激活**: 根据主分类结果激活对应的子分类头
-3. **损失权重**: 支持调整不同任务的损失权重
-4. **数据增强**: 训练时使用随机翻转、旋转等数据增强
-5. **学习率调度**: 使用StepLR进行学习率衰减
-
-## 性能优化
-
-- 使用预训练的EfficientNetV2-B1作为backbone
-- 实现了条件损失计算，只对相关样本计算损失
-- 支持GPU加速训练
-- 使用数据增强提高模型泛化能力
-- 实现了学习率调度和权重衰减
-
-## 故障排除
-
-1. **数据集为空**: 检查数据集目录结构是否正确
-2. **模型加载失败**: 确保已完成训练并且模型文件存在
-3. **GPU内存不足**: 减少batch_size
-4. **收敛困难**: 调整学习率或损失权重
+## 后续
+- 只写了核心部分，其余部分写的有点粗糙，更多功能自行解决
+- 该代码使用EfficientNetV2-B1作为backbone，参数量为22M左右，无明显变化，因此帧率应该也差不多
+- 没确认过量化部署后art的输出，改写成tf后最好是和你的代码保证一致
+- art如果输出是softmax的数据，可直接遍历查找最大的置信度，而不需要使用排序，相较来说应该也能再快一点点（也就是art中sort那块代码）
+- 如果确实可行，就尝试使用不同的backbone以及测试集的制作
+- 多实地测试不同条件下识别的鲁棒性以及准确性
+- 最后的最后，祝省赛一切顺利！国赛一切顺利！
